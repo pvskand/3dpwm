@@ -1,0 +1,1 @@
+{"frames": 213, "min": [-0.21426354348659515, -0.35486507415771484, 0.692162811756134], "scale": 1.2092304132238496e-05, "tracks": [{"name": "gt", "points": 1400, "offset": 0}, {"name": "pointworld", "points": 504, "offset": 1789200}, {"name": "ours", "points": 1400, "offset": 2433312}, {"name": "robot", "points": 1300, "offset": 4222512}]}

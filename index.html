@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="author" content="Skand Peri, Hung Nguyen, Chanho Kim, Li Fuxin, Stefan Lee">
+<title>3D Point World Models</title>
+<meta name="description" content="Project page and appendix for 3D Point World Models (3DPWM).">
+<link rel="icon" href="data:,">
+<script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
+<link rel="stylesheet" href="style.css?v=23">
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>3D Point World Models</h1>
+    <p class="sub">Point Completion Enables More Accurate Dynamics Learning</p>
+    <p class="authors">Skand Peri, Hung Nguyen, Chanho Kim, Li Fuxin, Stefan Lee</p>
+    <div class="btns">
+      <a class="btn" href="pdf/paper.pdf">Paper (PDF)</a>
+      <a class="btn alt" href="pdf/appendix.pdf">Appendix (PDF)</a>
+      <a class="btn alt" href="#videos">Videos</a>
+      <a class="btn alt" href="#takeaways">Key takeaways</a>
+    </div>
+    <div class="teaser">
+      <img src="img/teaser.svg" alt="3DPWM overview: offline data, world model, planning; RGB-D to partial point cloud to completion to dynamics">
+      <p class="cap"><b>Overview.</b> 3DPWM is a task-agnostic world model trained from demonstrations and deployed for planning with model-predictive control. From a single-view RGB-D observation it builds a partial point cloud, <b>completes</b> it, then rolls out action-conditioned trajectories in 3D.</p>
+    </div>
+  </div>
+</header>
+
+<nav class="top"><div class="wrap">
+  <a href="#abstract">Abstract</a>
+  <a href="#takeaways">Key takeaways</a>
+  <a href="#videos">Videos</a>
+  <a href="#pcd">3D rollouts</a>
+  <a href="#appendix">Appendix</a>
+  <a href="#a-data">A Data</a>
+  <a href="#b-model">B Model</a>
+  <a href="#c-cost">C Cost functions</a>
+  <a href="#d-fail">D Failures</a>
+  <a href="#e-robust">E Robustness</a>
+  <a href="#f-gnn">F GNN</a>
+  <a href="#g-clutter">G Clutter</a>
+  <a href="#h-pf">H Baselines</a>
+  <a href="#i-env">I Environments</a>
+  <a href="#j-neg">J Negative results</a>
+</div></nav>
+
+<main class="wrap">
+
+<section id="abstract">
+  <h2>Abstract</h2>
+  <p>Large video-based dynamics models lack explicit 3D structure and suffer from geometrically inconsistent long-term rollouts. Emerging 3D dynamics models based on partial point clouds are more consistent but remain sensitive to occlusions and accumulated drift. We present <b>3D Point World Models (3DPWM)</b> – a task-agnostic world model that operates entirely in 3D space by first completing partial point clouds and then learning action-conditioned dynamics in the completed scene. Operating on completed geometry enables reliable long-horizon rollouts and more accurate cost evaluation for model-based planning, while supporting adaptation to new tasks. Across embodiments and tabletop manipulation benchmarks, 3DPWM achieves substantially higher rollout accuracy than state-of-the-art 3D world models including PointWorld, supports open-loop and closed-loop planning, and enables sim-to-real transfer.</p>
+</section>
+
+<section id="takeaways">
+  <h2>Key takeaways</h2>
+  <div class="grid">
+    <div class="card">
+      <h4>Better long-horizon rollouts</h4>
+      <p>Predicted point clouds achieve strong reward correlations (0.77–0.86) across all six tasks, while baselines reach at most 0.45 on long-horizon tasks.</p>
+    </div>
+    <div class="card">
+      <h4>Closed-loop planning</h4>
+      <p>Closed-loop planning achieves 2–4× higher success than ParticleFormer+.</p>
+    </div>
+    <div class="card">
+      <h4>Open-loop planning</h4>
+      <p>Open-loop planning achieves up to 6× higher success with learned completion than prior rollout-based baselines.</p>
+    </div>
+    <div class="card">
+      <h4>Adaptation to unseen long-horizon tasks</h4>
+      <p>Trained only on MugCleanup and Coffee demonstrations, 3DPWM adapts to the unseen long-horizon CoffeePreparation task, where ParticleFormer+ fails.</p>
+    </div>
+    <div class="card">
+      <h4>Sim-to-real transfer</h4>
+      <p>Trained in simulation only and deployed on a Franka with a single RGB-D camera and no real-world fine-tuning, 3DPWM does about 2.25× better than baselines.</p>
+    </div>
+  </div>
+</section>
+
+<section id="videos">
+  <h2>Real-world videos</h2>
+  <p class="lead">Franka Panda, single static RGB-D camera, MPPI planning on 3DPWM rollouts. The dynamics model is the best PickYCB simulation checkpoint, with no real-world fine-tuning. Videos are silent.</p>
+
+  <h3>3DPWM imagination</h3>
+  <figure class="vwide">
+    <video controls muted loop playsinline preload="metadata" src="vid/pick_up_the_drill.mp4"></video>
+    <figcaption><b>Pick up the drill.</b> The inset shows the point-cloud future imagined by 3DPWM while the robot executes the plan.</figcaption>
+  </figure>
+
+  <h3>Sim2Real tasks</h3>
+  <div class="vgrid">
+    <figure><video autoplay muted loop playsinline preload="metadata" src="vid/pick_apple.mp4"></video><figcaption><b>PickApple</b></figcaption></figure>
+    <figure><video autoplay muted loop playsinline preload="metadata" src="vid/pick_drill.mp4"></video><figcaption><b>PickDrill</b></figcaption></figure>
+    <figure><video autoplay muted loop playsinline preload="metadata" src="vid/place_apple.mp4"></video><figcaption><b>PlaceApple</b> – toy apple onto a plate</figcaption></figure>
+  </div>
+
+  <h3>Robustness and clutter</h3>
+  <div class="vgrid">
+    <figure><video autoplay muted loop playsinline preload="metadata" src="vid/pick_apple_dark.mp4"></video><figcaption><b>PickApple, darker lighting</b></figcaption></figure>
+    <figure><video autoplay muted loop playsinline preload="metadata" src="vid/pick_and_place_apple_clutter.mp4"></video><figcaption><b>PickPlaceApple in clutter</b></figcaption></figure>
+    <figure><video autoplay muted loop playsinline preload="metadata" src="vid/stack_cube.mp4"></video><figcaption><b>StackCube in clutter</b></figcaption></figure>
+  </div>
+</section>
+
+<section id="pcd">
+  <h2>Point-cloud rollouts</h2>
+  <p class="lead"><b>Action-conditioned open-loop rollouts: each model sees only the first frame and is then rolled out using the recorded actions.</b></p>
+  <div class="tabs" id="pcd-tabs" role="tablist"></div>
+  <div id="pcd-root"><p class="cap">Loading…</p></div>
+  <p class="cap" id="pcd-cap"></p>
+</section>
+
+<hr class="rule">
+
+<section id="appendix">
+  <h2>Appendix</h2>
+</section>
+
+<!-- A -->
+<section id="a-data">
+  <h2><span class="n">A</span>Data generation</h2>
+  <p><b>Point completion.</b> For each YCB object we render depth maps from 100 random viewpoints on a sphere of radius 1 looking at the origin (object centred), and back-project them to partial point clouds.</p>
+  <figure><img loading="lazy" src="img/point_completetion_views.png" alt="Random camera viewpoints around three YCB objects"><figcaption>Sampled random views on three YCB objects.</figcaption></figure>
+  <p style="margin-top:14px"><b>Dynamics modeling.</b> For all ManiSkill and DexMimicGen tasks a custom wrapper samples complete point clouds from object, part and geom meshes. To get correspondences, points are sampled once in the canonical frame and rigid-body poses are applied to every entity. Only one canonical cloud and <code>len(traj)</code> transformation matrices are stored, instead of a cloud per step.</p>
+</section>
+
+<!-- B -->
+<section id="b-model">
+  <h2><span class="n">B</span>Model details &amp; hyperparameters</h2>
+  <ul>
+    <li>Batch norm is replaced with layer norm; each of the four encoder stages is reduced to depth 2 for the smaller dataset.</li>
+    <li>RPE is enabled in alternating encoder/decoder blocks; patch size is 48 where RPE is on and 256 where it is off.</li>
+    <li>Bottleneck dimension d = 256. Action conditioning uses CrossAttn and SelfAttn modules of three layers with eight heads each.</li>
+    <li>FlashAttention is used across all attention modules, including cross- and self-attention.</li>
+  </ul>
+
+  <details open><summary>Table III – hyperparameters</summary><div class="body">
+  <div class="two">
+    <div class="tw"><table><tr><th colspan="2">Point completion</th></tr>
+      <tr><td>jitter prob</td><td>0.3</td></tr><tr><td>jitter mean</td><td>0.01</td></tr><tr><td>jitter variance</td><td>0.03</td></tr>
+      <tr><td>global feature channels</td><td>512</td></tr><tr><td>encoder channels</td><td>[32, 64, 128, 256]</td></tr>
+      <tr><td>decoder upsample factors</td><td>[2, 2, 2]</td></tr><tr><td>decoder hidden channels</td><td>64</td></tr>
+      <tr><td>seed generator blocks</td><td>4</td></tr><tr><td>seed gen. attn heads</td><td>8</td></tr><tr><td>seed gen. attn dims</td><td>384</td></tr>
+      <tr><td>seed gen. upsample factor</td><td>2</td></tr><tr><td>seed gen. output dim</td><td>256</td></tr></table></div>
+    <div class="tw"><table><tr><th colspan="2">Point dynamics model</th></tr>
+      <tr><td>serialization pattern</td><td>Z + TZ + H + TH</td></tr><tr><td>patch interaction</td><td>Shift Order + Shuffle Order</td></tr>
+      <tr><td>positional encoding</td><td>[CPE, RPE, CPE, RPE]</td></tr><tr><td>stride</td><td>[2, 2]</td></tr>
+      <tr><td>encoder depth</td><td>[2, 2, 2]</td></tr><tr><td>encoder channels</td><td>[32, 128, 256]</td></tr>
+      <tr><td>encoder num heads</td><td>[8, 8, 8]</td></tr><tr><td>encoder patch size</td><td>[256, 48, 256]</td></tr>
+      <tr><td>decoder depth</td><td>[2, 2]</td></tr><tr><td>decoder channels</td><td>[128, 256]</td></tr>
+      <tr><td>decoder num heads</td><td>[8, 8]</td></tr><tr><td>decoder patch size</td><td>[256, 48]</td></tr>
+      <tr><td>mlp ratio</td><td>4</td></tr><tr><td>qkv bias</td><td>True</td></tr><tr><td>drop path</td><td>0.3</td></tr>
+      <tr><td>pre norm / shuffle orders</td><td>True / True</td></tr></table></div>
+    <div class="tw"><table><tr><th colspan="2">MPPI planner</th></tr>
+        <tr><td>planning horizon</td><td>20–30 steps</td></tr><tr><td># samples</td><td>200</td></tr><tr><td># top candidates</td><td>64</td></tr>
+        <tr><td>λ</td><td>0.7</td></tr><tr><td>noise σ</td><td>5</td></tr></table></div>
+    <div class="tw"><table><tr><th colspan="2">Training</th></tr>
+        <tr><td>loss</td><td>Huber, δ = 0.25</td></tr><tr><td>optimizer</td><td>AdamW</td></tr><tr><td>learning rate</td><td>1e-4</td></tr>
+        <tr><td>scheduler</td><td>StepLR, step 30, ε = 0.1</td></tr></table></div>
+  </div></div></details>
+
+  <details><summary>SAM3 prompting (VLM prompt used to get point prompts)</summary><div class="body">
+    <p>Given the task description, Gemini Robotics 1.5 identifies task-relevant objects and outputs one or more 2D points per object. These points prompt SAM3 to segment the objects.</p>
+<pre>You are a vision-language model assisting a robot with a manipulation task.
+
+Given:
+1. A natural-language task description.
+2. An RGB image of the current scene.
+
+Your goal is to identify all objects that are relevant to successfully
+completing the task and provide one or more 2D point locations for each
+relevant object.
+
+Instructions:
+1. Read the task description carefully and determine which physical objects
+   the robot must interact with, manipulate, move, avoid, or otherwise
+   reason about to complete the task.
+2. In the image, locate each task-relevant object.
+3. For each relevant object, select a 2D point that lies clearly INSIDE the
+   visible region of that object.
+   - The point should be near the center of the visible portion of the object
+     whenever possible.
+   - Do not place the point on the object's boundary.
+   - Do not place the point on the background, another object, or an
+     occluding object.
+   - Prefer points that are visually unambiguous and far from object boundaries.
+   - If an object is partially occluded, place the point on the visible portion.
+...
+Output format:
+[ { "object": "&lt;short object description&gt;", "point": [x, y] }, ... ]
+
+Example:
+Task: "Pick up the red mug and place it inside the bowl."
+Output:
+[ {"object": "red mug", "point": [312, 241]},
+  {"object": "bowl",    "point": [487, 326]} ]
+
+Be precise: every point must fall inside the corresponding object's visible pixels.</pre>
+  </div></details>
+</section>
+
+<!-- C -->
+<section id="c-cost">
+  <h2><span class="n">C</span>Cost function specification</h2>
+  <div class="take"><b>Takeaway:</b> Because completion yields high-fidelity long-horizon rollouts, cost functions can be written directly on predicted point clouds – generated by a VLM from the task description, or adapted from a simulator reward.</div>
+  <p>We prompt Gemini 2.5 Flash with the task description and the detected-objects JSON to produce a PyTorch <code>cost_fn(cfg, point, info)</code> that returns a scalar (lower is better). The prompt asks the model to:</p>
+  <ul>
+    <li>infer the task objective and use only objects present in the JSON, including ones the robot could collide with;</li>
+    <li>operate on predicted point clouds (centroids, distances, containment, proximity) and use <code>info</code> only for what clouds cannot give (grasp state, task stage, goals);</li>
+    <li>measure task progress, with stage-dependent terms for multi-step tasks;</li>
+    <li>add collision costs that complement rather than overwhelm the task term;</li>
+    <li>prefer smooth costs (Euclidean distance, <code>tanh</code>, exponentials) over hard thresholds; return one scalar; keep it simple.</li>
+  </ul>
+  <p>Below is an example cost function adapted almost directly from the ManiSkill PickCube reward.</p>
+  <details open><summary>Listing 1 – PickCube cost on 3DPWM rollouts</summary><div class="body">
+<pre>def cost_fn_pick_cube(cfg, point, info):
+    """Cost function for the PickCube-v1 task."""
+    goal_xyz = torch.tensor(info['extra']['goal_pos'], device=cfg.device)
+
+    left_gripper_xyz  = point['left_gripper']
+    right_gripper_xyz = point['right_gripper']
+    cube_xyz          = point['cube']
+
+    cube_center_xyz = cube_xyz.mean(dim=0)
+    tcp_xyz = (left_gripper_xyz.mean(dim=0) +
+               right_gripper_xyz.mean(dim=0)) / 2
+
+    tcp_to_cube_dist = torch.norm(cube_center_xyz - tcp_xyz, dim=0)
+    reaching_reward  = 1.0 - torch.tanh(5.0 * tcp_to_cube_dist)
+
+    cube_to_goal_dist = torch.norm(cube_center_xyz - goal_xyz, dim=0)
+    place_reward      = 1.0 - torch.tanh(5.0 * cube_to_goal_dist)
+
+    contact_reward = 1.0 if info['grasped'] else 0.0
+
+    if info['grasped']:
+        total_cost = -place_reward
+    else:
+        total_cost = -(reaching_reward + contact_reward)
+
+    return total_cost</pre>
+  </div></details>
+  <p>Contact is not modeled explicitly: we treat the object as grasped when the gripper TCP is within 2.5 cm of the object centre (<code>info['grasped'] = True</code>). Thresholding the gripper–object–gripper intersection was hard to tune in practice; explicit contact modeling in point world models is left for future work.</p>
+</section>
+
+<!-- D -->
+<section id="d-fail">
+  <h2><span class="n">D</span>Failure scenarios</h2>
+  <div class="take warn"><b>Takeaway:</b> Failures mostly come from a train/real distribution gap in the partial inputs: our completion data contains no inter-object occlusion, and the model sometimes emits stray points outside the object boundary.</div>
+  <p>Completion is trained on partial clouds rendered from single meshes at 100 viewpoints, so occlusions caused by other objects are never seen. Noisy points outside the object boundary are also a common failure. Remaining real-world failures are also attributed to biased centre-of-mass estimates.</p>
+  <div class="vwide">
+    <figure><img loading="lazy" src="img/point_completion.png" alt="Successful and failed point completions"><figcaption><b>Fig. 7.</b> Fine-tuned completion. Top: successes on apple and mustard bottle (red = partial input, green = completion). Bottom: failures on drill and apple.</figcaption></figure>
+  </div>
+</section>
+
+<!-- E -->
+<section id="e-robust">
+  <h2><span class="n">E</span>Robustness to lighting and camera viewpoint</h2>
+  <div class="take"><b>Takeaway:</b> With two new camera viewpoints and dim lighting, 3DPWM holds 55–60% success on PickApple while ParticleFormer+ falls to 0–10%.</div>
+  <p>Policies trained on calibrated point clouds are generally robust to lighting and viewpoint shifts [20, 65]; our PickApple results (20 trials per plot) agree.</p>
+  <div class="two">
+    <figure><img loading="lazy" src="img/lighting_viewpoint.png" alt="Two viewpoint changes and darker lighting"><figcaption>The tested conditions.</figcaption></figure>
+    <figure><img loading="lazy" src="img/viewpoint_lighting.png" alt="Bar chart: 3DPWM 60, 55, 60 vs ParticleFormer+ 0, 10, 0"><figcaption><b>Fig. 8.</b> Success rate: Viewpoint-1 / Viewpoint-2 / Dark lighting.</figcaption></figure>
+  </div>
+  <figure class="vwide" style="margin-top:14px"><video controls muted loop playsinline preload="none" src="vid/pick_apple_dark.mp4"></video><figcaption>PickApple under darker lighting.</figcaption></figure>
+</section>
+
+<!-- F -->
+<section id="f-gnn">
+  <h2><span class="n">F</span>Comparison to GNN-based methods</h2>
+  <div class="take"><b>Takeaway:</b> Transformer dynamics on completed clouds are an order of magnitude more accurate than GNN dynamics (GBND), consistent with prior findings that GNNs underperform transformers.</div>
+  <p>Gaussian-splatting methods such as GBND [24] combine Gaussian point dynamics with splat rendering. As 3DPWM models dynamics rather than rendering, we compare against GBND's GNN dynamics. Lower Chamfer and higher correlation are better; best in bold.</p>
+  <div class="tw"><table>
+    <tr><th rowspan="2">Task</th><th class="num" colspan="2">Chamfer L1 ↓</th><th class="num" colspan="2">Reward corr. (r) ↑</th></tr>
+    <tr><th class="num">GBND</th><th class="num">3DPWM</th><th class="num">GBND</th><th class="num">3DPWM</th></tr>
+    <tr><td>PickCube</td><td class="num">0.185</td><td class="num best">0.009</td><td class="num">0.37</td><td class="num best">0.86</td></tr>
+    <tr><td>Pick YCB</td><td class="num">0.21</td><td class="num best">0.028</td><td class="num">0.33</td><td class="num best">0.85</td></tr>
+    <tr><td>Box Cleanup</td><td class="num">0.301</td><td class="num best">0.022</td><td class="num">0.16</td><td class="num best">0.83</td></tr>
+  </table></div>
+  <p>Integrating a rendering pipeline into 3DPWM, with 3DPWM as the dynamics model, is future work.</p>
+</section>
+
+<!-- G -->
+<section id="g-clutter">
+  <h2><span class="n">G</span>Sim2Real in cluttered environments</h2>
+  <div class="take"><b>Takeaway:</b> In clutter, 3DPWM gets 45% (PickPlaceApple) and 60% (StackCube) over 20 trials, versus 0% and 5% for ParticleFormer+. All StackCube failures are near-misses during the final placement.</div>
+  <p><b>PickPlaceApple:</b> the apple starts near a group of clutter objects and the cost adds a heuristic collision penalty. <b>StackCube:</b> stack a yellow cube on a blue cube in a moderately cluttered scene; precise placement is critical.</p>
+  <figure><img loading="lazy" src="img/clutter.png" alt="Clutter success rates and a StackCube near-miss sequence"><figcaption><b>Fig. 9.</b> Left: success over 20 trials per task. Right: a StackCube failure at the very end, placing the yellow cube on the blue cube.</figcaption></figure>
+  <div class="vgrid" style="margin-top:14px">
+    <figure><video muted loop playsinline preload="none" controls src="vid/pick_and_place_apple_clutter.mp4"></video><figcaption>PickPlaceApple in clutter</figcaption></figure>
+    <figure><video muted loop playsinline preload="none" controls src="vid/stack_cube.mp4"></video><figcaption>StackCube in clutter</figcaption></figure>
+  </div>
+</section>
+
+<!-- H -->
+<section id="h-pf">
+  <h2><span class="n">H</span>Baselines: ParticleFormer</h2>
+  <div class="take"><b>Takeaway:</b> Even a stronger PTv3-based ParticleFormer+ trails 3DPWM, and the original 3-layer version is weaker still – so the gap is not about network size.</div>
+  <p>Each partial input has point velocities and a one-hot instance segmentation vector. We run two variants, both trained on segmented partial clouds with the authors' hybrid Chamfer + Hausdorff loss: <b>PFormer (3-layer)</b> – re-implementation with three transformer layers as in the original paper; and <b>PFormer+</b> – encoder/decoder replaced by our PTv3 architecture.</p>
+  <div class="tw"><table>
+    <tr><th rowspan="2">Task</th><th class="num" rowspan="2">Avg. rollout len.</th><th class="num" colspan="3">Chamfer L1 ↓</th><th class="num" colspan="3">Reward corr. (r) ↑</th></tr>
+    <tr><th class="num">PFormer+</th><th class="num">PFormer (3L)</th><th class="num">3DPWM</th><th class="num">PFormer+</th><th class="num">PFormer (3L)</th><th class="num">3DPWM</th></tr>
+    <tr><td>PickCube</td><td class="num">66</td><td class="num">0.080</td><td class="num">0.132</td><td class="num best">0.009</td><td class="num">0.61</td><td class="num">0.41</td><td class="num best">0.86</td></tr>
+    <tr><td>Box Cleanup</td><td class="num">218</td><td class="num">0.132</td><td class="num">0.225</td><td class="num best">0.022</td><td class="num">0.30</td><td class="num">0.19</td><td class="num best">0.83</td></tr>
+  </table></div>
+</section>
+
+<!-- I -->
+<section id="i-env">
+  <h2><span class="n">I</span>Environments</h2>
+  <figure><img class="nb" loading="lazy" src="img/env.png" alt="Snapshots of the six evaluation environments"><figcaption><b>Fig. 10.</b> Environments used to evaluate 3DPWM.</figcaption></figure>
+  <div class="tw" style="margin-top:14px"><table class="envt">
+    <tr><th>Task</th><th>Description</th><th class="num">Observation points</th><th class="num">Action dim</th></tr>
+    <tr><td><b>PickCube</b></td><td>Lift the cube from the table to a goal position in the air, given as a 3D point.</td><td class="num">1,200</td><td class="num">7</td></tr>
+    <tr><td><b>StackCube</b></td><td>Stack the red cube on top of the green cube.</td><td class="num">1,500</td><td class="num">7</td></tr>
+    <tr><td><b>PickYCB</b></td><td>Pick any YCB object from the table to a goal position in the air, given as a 3D point.</td><td class="num">1,200</td><td class="num">7</td></tr>
+    <tr><td><b>MugCleanup</b></td><td>Pick and place the mug inside the drawer and close it.</td><td class="num hi">8,192</td><td class="num">7</td></tr>
+    <tr><td><b>TwoArmBoxCleanup</b></td><td>Pick up the lid of the box using two dexterous hands and place it on the box.</td><td class="num hi">10,000</td><td class="num hi">24</td></tr>
+    <tr><td><b>TwoArmDrawerCleanup</b></td><td>Pick and place the mug using two dexterous hands inside the drawer and close it.</td><td class="num hi">12,000</td><td class="num hi">24</td></tr>
+  </table></div>
+  <p class="cap"><b>Table VI.</b> Complete-cloud points and action dimension per task. The dexterous two-arm tasks are much higher-dimensional: <b>24-d actions</b> (6 pose + 6 finger dimensions per arm, versus 7 for the parallel gripper) and up to <b>12,000 points</b> (versus 1,200), and MugCleanup already uses 8,192 points.</p>
+</section>
+
+<!-- J -->
+<section id="j-neg">
+  <h2><span class="n">J</span>Things we tried that did not work</h2>
+  <div class="take warn"><b>Takeaway:</b> Off-the-shelf 3D/depth foundation models were insufficient for real-world manipulation, primarily due to object misalignment.</div>
+  <p>Shared here in the hope that they help others.</p>
+  <ul>
+    <li><b>SAM3D instead of custom-trained completion.</b> The completions generalize to many common objects but do not align with the partial input, even when given sensor depth rather than estimated depth. This is a known issue (GitHub issues #79 and #162 of that repository).</li>
+    <li><b>Depth foundation models to avoid noisy completions (MoGe-2, Depth Anything 3).</b> Depth and back-projected clouds were very clean, but (a) objects were misaligned in the real world, as with SAM3D, and (b) small details, depending on viewpoint, were missed – details that can be crucial for manipulation.</li>
+  </ul>
+</section>
+
+</main>
+
+<footer><div class="wrap">3D Point World Models (3DPWM).<br>This webpage was created with <a href="https://claude.com/claude-code">Claude Code</a>.</div></footer>
+
+<script>
+// Pause offscreen autoplay videos to keep the page light.
+(function(){
+  var vids=document.querySelectorAll('video[autoplay]');
+  if(!('IntersectionObserver' in window)) return;
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.play().catch(function(){}); } else { e.target.pause(); } });
+  },{threshold:.25});
+  vids.forEach(function(v){ io.observe(v); });
+})();
+
+</script>
+<script type="module">
+  import { mountPcdViewer } from './lib/pcd-viewer.js';
+  var ROLLOUTS=[
+    {label:'TwoArmBoxCleanup', base:'pcd/box_demo180', cap:'<b>TwoArmBoxCleanup</b> – lift the box lid with two dexterous hands.'}
+  ];
+  var el=document.getElementById('pcd-root'), tabs=document.getElementById('pcd-tabs'), cap=document.getElementById('pcd-cap');
+  var dispose=null, cur=-1, token=0, btns=[];
+  function select(i){
+    if(i===cur) return; cur=i; var t=++token;
+    btns.forEach(function(b,j){ b.setAttribute('aria-selected', j===i); });
+    cap.innerHTML=ROLLOUTS[i].cap;
+    if(dispose){ dispose(); dispose=null; }
+    el.innerHTML='<p class="cap">Loading…</p>';
+    mountPcdViewer(el,ROLLOUTS[i].base).then(function(d){ if(t!==token){ d(); } else { dispose=d; } })
+      .catch(function(e){ el.innerHTML='<p class="cap">Could not load the viewer.</p>'; console.error(e); });
+  }
+  if(ROLLOUTS.length<2) tabs.style.display='none';
+  ROLLOUTS.forEach(function(r,i){ var b=document.createElement('button'); b.textContent=r.label; b.setAttribute('role','tab'); b.onclick=function(){ select(i); }; tabs.appendChild(b); btns.push(b); });
+  var io=new IntersectionObserver(function(es){ if(es[0].isIntersecting){ io.disconnect(); select(0); } },{rootMargin:'300px'});
+  io.observe(el);
+</script>
+</body>
+</html>
