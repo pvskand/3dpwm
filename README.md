@@ -31,7 +31,7 @@ This repository is released under the MIT license. See [LICENSE](LICENSE) for ad
 ## BibTeX
 
 ```
-@article{peri2026point,
+@article{3dpwm,
   title={3D Point World Models: Point Completion Enables More Accurate Dynamics Learning},
   author={Peri, Skand and Nguyen, Hung and Kim, Chanho and Fuxin, Li and Lee, Stefan},
   journal={arXiv preprint arXiv:2607.00148},
